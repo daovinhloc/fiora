@@ -1,0 +1,342 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["fullTextSearchPostgres"]
+  binaryTargets   = ["native", "linux-musl-arm64-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id               String              @id @default(uuid()) @db.Uuid
+  name             String?
+  email            String              @unique
+  password         String?
+  emailVerified    Boolean?            @default(false)
+  image            String?
+  isDeleted        Boolean             @default(false)
+  deletedAt        DateTime?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  createdBy        String?             @db.Uuid
+  updatedBy        String?             @db.Uuid
+  role             UserRole            @default(User)
+  accounts         Account[]           @relation("UserAccounts")
+  categories       Category[]          @relation("UserCategories")
+  categoryProducts CategoryProducts[]
+  partners         Partner[]           @relation("UserPartners")
+  products         Product[]           @relation("UserProducts")
+  productItems     ProductItems[]
+  sessions         Session[]
+  transactions     Transaction[]       @relation("UserTransactions")
+  authentication   UserAuthentication?
+
+  @@index([isDeleted])
+}
+
+model Session {
+  id           String   @id @default(uuid()) @db.Uuid
+  sessionToken String   @unique
+  userId       String   @db.Uuid
+  expires      DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  createdBy    String   @db.Uuid
+  updatedBy    String?  @db.Uuid
+  user         User     @relation(fields: [userId], references: [id])
+}
+
+model Account {
+  id               String        @id @default(uuid()) @db.Uuid
+  userId           String        @db.Uuid
+  icon             String?
+  name             String        @db.VarChar(50)
+  description      String?       @db.VarChar(1000)
+  type             AccountType   @default(Payment)
+  currency         Currency      @default(VND)
+  limit            Decimal?      @default(0) @db.Decimal(13, 2)
+  balance          Decimal?      @default(0) @db.Decimal(13, 2)
+  parentId         String?       @db.Uuid
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  createdBy        String        @db.Uuid
+  updatedBy        String?       @db.Uuid
+  color            String?
+  parent           Account?      @relation("ChildAccounts", fields: [parentId], references: [id])
+  children         Account[]     @relation("ChildAccounts")
+  user             User          @relation("UserAccounts", fields: [userId], references: [id])
+  fromTransactions Transaction[] @relation("FromAccount")
+  toTransactions   Transaction[] @relation("ToAccount")
+
+  @@index([userId])
+  @@index([parentId])
+}
+
+model UserAuthentication {
+  id                String   @id @default(uuid()) @db.Uuid
+  userId            String   @unique @db.Uuid
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  createdBy         String   @db.Uuid
+  updatedBy         String?  @db.Uuid
+  user              User     @relation(fields: [userId], references: [id])
+
+  @@unique([provider, providerAccountId])
+}
+
+model Product {
+  id           String               @id @default(uuid()) @db.Uuid
+  userId       String               @db.Uuid
+  catId        String?              @db.Uuid
+  type         ProductType
+  icon         String
+  name         String               @db.VarChar(50)
+  description  String?              @db.VarChar(1000)
+  price        Decimal              @db.Decimal(13, 2)
+  taxRate      Decimal?             @db.Decimal(13, 2)
+  items        Json?                @db.Json
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+  createdBy    String               @db.Uuid
+  updatedBy    String?              @db.Uuid
+  currency     Currency             @default(VND)
+  category     CategoryProducts?    @relation(fields: [catId], references: [id])
+  user         User                 @relation("UserProducts", fields: [userId], references: [id])
+  productItems ProductItems[]
+  transactions ProductTransaction[] @relation("ProductTransactions")
+
+  @@index([userId])
+  @@index([catId])
+  @@index([userId, catId])
+}
+
+model ProductItems {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String   @db.VarChar(50)
+  description String?  @db.VarChar(1000)
+  userId      String   @db.Uuid
+  productId   String   @db.Uuid
+  createdBy   String?  @db.Uuid
+  updatedBy   String?  @db.Uuid
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  icon        String
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, productId])
+}
+
+model CategoryProducts {
+  id          String    @id @default(uuid()) @db.Uuid
+  userId      String    @db.Uuid
+  icon        String
+  name        String    @db.VarChar(50)
+  description String?   @db.VarChar(1000)
+  tax_rate    Decimal?  @db.Decimal(13, 2)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdBy   String?   @db.Uuid
+  updatedBy   String?   @db.Uuid
+  user        User      @relation(fields: [userId], references: [id])
+  product     Product[]
+}
+
+model Transaction {
+  id               String               @id @default(uuid()) @db.Uuid
+  userId           String?              @db.Uuid
+  date             DateTime             @db.Date
+  type             TransactionType
+  amount           Decimal              @db.Decimal(13, 2)
+  fromAccountId    String?              @db.Uuid
+  fromCategoryId   String?              @db.Uuid
+  toAccountId      String?              @db.Uuid
+  toCategoryId     String?              @db.Uuid
+  products         Json?
+  partnerId        String?              @db.Uuid
+  remark           String?              @db.VarChar(255)
+  isDeleted        Boolean              @default(false)
+  deletedAt        DateTime?
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  updatedBy        String?              @db.Uuid
+  createdBy        String               @db.Uuid
+  currency         Currency             @default(VND)
+  productsRelation ProductTransaction[] @relation("ProductTransactions")
+  fromAccount      Account?             @relation("FromAccount", fields: [fromAccountId], references: [id], onDelete: Restrict)
+  fromCategory     Category?            @relation("FromCategory", fields: [fromCategoryId], references: [id])
+  partner          Partner?             @relation("PartnerTransactions", fields: [partnerId], references: [id])
+  toAccount        Account?             @relation("ToAccount", fields: [toAccountId], references: [id], onDelete: Restrict)
+  toCategory       Category?            @relation("ToCategory", fields: [toCategoryId], references: [id])
+  user             User?                @relation("UserTransactions", fields: [userId], references: [id])
+
+  @@index([date])
+  @@index([type])
+  @@index([userId, date])
+  @@index([userId, type, date])
+}
+
+model ProductTransaction {
+  productId     String      @db.Uuid
+  transactionId String      @db.Uuid
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  createdBy     String      @db.Uuid
+  updatedBy     String?     @db.Uuid
+  product       Product     @relation("ProductTransactions", fields: [productId], references: [id])
+  transaction   Transaction @relation("ProductTransactions", fields: [transactionId], references: [id])
+
+  @@id([productId, transactionId])
+}
+
+model Partner {
+  id           String        @id @default(uuid()) @db.Uuid
+  userId       String        @db.Uuid
+  logo         String?
+  name         String        @db.VarChar(255)
+  identify     String?       @db.VarChar(50)
+  dob          DateTime?     @db.Date
+  taxNo        String?       @db.VarChar(20)
+  address      String?       @db.VarChar(255)
+  email        String?       @db.VarChar(50)
+  phone        String?       @db.VarChar(50)
+  description  String?       @db.VarChar(1000)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  createdBy    String        @db.Uuid
+  updatedBy    String?       @db.Uuid
+  parentId     String?       @db.Uuid
+  parent       Partner?      @relation("ParentChildPartners", fields: [parentId], references: [id])
+  children     Partner[]     @relation("ParentChildPartners")
+  user         User          @relation("UserPartners", fields: [userId], references: [id])
+  transactions Transaction[] @relation("PartnerTransactions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@id([identifier, token])
+}
+
+model Section {
+  id           String      @id @default(uuid()) @db.Uuid
+  section_type SectionType
+  name         String
+  order        Int
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  createdBy    String      @db.Uuid
+  updatedBy    String?     @db.Uuid
+  medias       Media[]
+}
+
+model Media {
+  id            String    @id @default(uuid()) @db.Uuid
+  media_type    MediaType
+  media_url     String?
+  embed_code    String?
+  description   String?
+  uploaded_by   String?
+  uploaded_date DateTime  @default(now())
+  section_id    String?   @db.Uuid
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  createdBy     String?   @db.Uuid
+  updatedBy     String?   @db.Uuid
+  redirect_url  String?
+  section       Section?  @relation(fields: [section_id], references: [id])
+}
+
+model Category {
+  id               String        @id @default(uuid()) @db.Uuid
+  userId           String        @db.Uuid
+  type             CategoryType
+  icon             String
+  name             String        @db.VarChar(50)
+  description      String?       @db.VarChar(1000)
+  parentId         String?       @db.Uuid
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  createdBy        String        @db.Uuid
+  updatedBy        String?       @db.Uuid
+  balance          Decimal       @default(0) @db.Decimal(13, 2)
+  tax_rate         Decimal?      @db.Decimal(13, 2)
+  parent           Category?     @relation("SubCategories", fields: [parentId], references: [id], onDelete: Cascade)
+  subCategories    Category[]    @relation("SubCategories")
+  user             User          @relation("UserCategories", fields: [userId], references: [id], onDelete: Cascade)
+  fromTransactions Transaction[] @relation("FromCategory")
+  toTransactions   Transaction[] @relation("ToCategory")
+
+  @@index([userId])
+  @@index([parentId])
+}
+
+enum MediaType {
+  IMAGE
+  VIDEO
+  EMBEDDED
+}
+
+enum SectionType {
+  BANNER
+  VISION_MISSION
+  KPS
+  PARTNER_LOGO
+  FOOTER
+  HEADER
+  REVIEW
+  SYSTEM
+}
+
+enum CategoryType {
+  Expense
+  Income
+}
+
+enum AccountType {
+  Payment
+  Saving
+  CreditCard
+  Debt
+  Lending
+  Invest
+}
+
+enum Currency {
+  VND
+  USD
+}
+
+enum TransactionType {
+  Expense
+  Income
+  Transfer
+}
+
+enum ProductType {
+  Product
+  Service
+  Edu
+}
+
+enum UserRole {
+  Admin
+  User
+  CS
+}

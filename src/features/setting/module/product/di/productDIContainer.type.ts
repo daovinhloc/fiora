@@ -1,0 +1,18 @@
+export const TYPES = {
+  IHttpClient: Symbol.for('IHttpClient'),
+  ICategoryRepository: Symbol.for('ICategoryRepository'),
+  ICategoryAPI: Symbol.for('ICategoryAPI'),
+  IProductAPI: Symbol.for('IProductAPI'),
+  IProductRepository: Symbol.for('IProductRepository'),
+  ICreateProductUseCase: Symbol.for('ICreateProductUseCase'),
+  IGetProductUseCase: Symbol.for('IGetProductUseCase'),
+  IUpdateProductUseCase: Symbol.for('IUpdateProductUseCase'),
+  IDeleteProductUseCase: Symbol.for('IDeleteProductUseCase'),
+  IGetProductTransactionUseCase: Symbol.for('IGetProductTransactionUseCase'),
+  IGetSingleProductUseCase: Symbol.for('IGetSingleProductUseCase'),
+  IGetCategoryProductUseCase: Symbol.for('IGetCategoryProductUseCase'),
+  ICreateCategoryProductUseCase: Symbol.for('ICreateCategoryProductUseCase'),
+  IUpdateCategoryProductUseCase: Symbol.for('IUpdateCategoryProductUseCase'),
+  IDeleteCategoryProductUseCase: Symbol.for('IDeleteCategoryProductUseCase'),
+  IDeleteProductTransferUseCase: Symbol.for('IDeleteProductTransferUseCase'),
+};
