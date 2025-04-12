@@ -58,11 +58,10 @@ class TransactionUseCase {
       where = {
         AND: [
           where,
-          { userId },
           {
             OR: [
-              { fromAccount: { name: { contains: typeSearchParams } } },
-              { toAccount: { name: { contains: typeSearchParams } } },
+              { fromAccount: { name: { contains: typeSearchParams, mode: 'insensitive' } } },
+              { toAccount: { name: { contains: typeSearchParams, mode: 'insensitive' } } },
               { partner: { name: { contains: typeSearchParams, mode: 'insensitive' } } },
               {
                 amount: { gte: Number(typeSearchParams) || 0, lte: Number(typeSearchParams) || 0 },
@@ -92,6 +91,7 @@ class TransactionUseCase {
       {
         ...where,
         isDeleted: false,
+        userId,
       },
       {
         skip,
@@ -504,6 +504,7 @@ class TransactionUseCase {
     transaction: Transaction,
     products: { id: string }[],
     userId: string,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     type: TransactionType,
   ) {
     if (!products || products.length === 0) {

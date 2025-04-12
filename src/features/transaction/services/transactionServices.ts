@@ -3,8 +3,8 @@ import { Category } from '@/features/home/module/category/slices/types';
 import { Response } from '@/shared/types/Common.types';
 
 const expenseIncomeServices = {
-  getCategories: async (): Promise<Response<any[]>> => {
-    return httpClient.get<Response<any[]>>('/transaction/expense-income');
+  getCategories: async (): Promise<Response<Category[]>> => {
+    return httpClient.get<Response<Category[]>>('/categories/expense-income');
   },
   createCategory: async (category: Omit<Category, 'id'>): Promise<Response<Category>> => {
     return httpClient.post<Response<Category>>('/categories/expense-income', category);
