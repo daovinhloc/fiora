@@ -9,7 +9,8 @@
     "deploymentEnabled": {
       "main": false,
       "develop": false,
-      "staging": false
+      "staging": false,
+      "production": true
     }
   },
   "env": {
