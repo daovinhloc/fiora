@@ -195,11 +195,14 @@ class TransactionUseCase {
     await this.revertProductPrices(tx, transaction);
     await tx.productTransaction.deleteMany({ where: { transactionId: transaction.id } });
   }
+
   async getTransactionFilterOptions(userId: string) {
     const filterOptions = await this.transactionRepository.getFilterOptions(userId);
     return {
-      accounts: filterOptions.accounts ?? [],
-      categories: filterOptions.categories ?? [],
+      fromAccounts: filterOptions.fromAccounts ?? [],
+      toAccounts: filterOptions.toAccounts ?? [],
+      fromCategories: filterOptions.fromCategories ?? [],
+      toCategories: filterOptions.toCategories ?? [],
       partners: filterOptions.partners ?? [],
     };
   }
