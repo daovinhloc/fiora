@@ -1,6 +1,18 @@
 import { prisma } from '@/config';
-import { Prisma, Transaction } from '@prisma/client';
+import { Prisma, Transaction, TransactionType, Partner } from '@prisma/client';
 import { ITransactionRepository } from '../../domain/repositories/transactionRepository.interface';
+
+// Interface for enhanced partner with type information
+interface EnhancedPartner extends Partner {
+  type?: string;
+}
+
+// Interface for enhanced transaction with user info and enhanced partner
+interface EnhancedTransaction extends Transaction {
+  partner: EnhancedPartner | null;
+  createdBy: any | null;
+  updatedBy: any | null;
+}
 
 class TransactionRepository implements ITransactionRepository {
   async getTransactionsByUserId(userId: string): Promise<Transaction[]> {
@@ -12,9 +24,79 @@ class TransactionRepository implements ITransactionRepository {
   }
 
   async getTransactionById(id: string, userId: string): Promise<Transaction | null> {
-    return await prisma.transaction.findFirst({
-      where: { id: id, userId: userId },
+    const transaction = await prisma.transaction.findFirst({
+      where: {
+        id: id,
+        userId: userId,
+        isDeleted: false,
+      },
+      include: {
+        partner: true,
+        fromAccount: true,
+        toAccount: true,
+        fromCategory: true,
+        toCategory: true,
+      },
     });
+
+    if (!transaction) return null;
+
+    // Fetch creator and updater user information separately
+    const [createdBy, updatedBy] = await Promise.all([
+      transaction.createdBy
+        ? prisma.user.findUnique({
+            where: { id: transaction.createdBy },
+            select: { id: true, name: true, email: true, image: true },
+          })
+        : null,
+      transaction.updatedBy
+        ? prisma.user.findUnique({
+            where: { id: transaction.updatedBy },
+            select: { id: true, name: true, email: true, image: true },
+          })
+        : null,
+    ]);
+
+    // Create enhanced transaction object
+    const enhancedTransaction: EnhancedTransaction = {
+      ...transaction,
+      createdBy,
+      updatedBy,
+      partner: transaction.partner ? { ...transaction.partner } : null,
+    };
+
+    // Determine partner type if partner exists
+    if (enhancedTransaction.partner && transaction.partnerId) {
+      // Get all transactions for this partner
+      const partnerTransactions = await prisma.transaction.findMany({
+        where: {
+          partnerId: transaction.partnerId,
+          userId: userId,
+          isDeleted: false,
+        },
+        select: {
+          type: true,
+        },
+      });
+
+      // Check transaction types
+      const hasIncomeType = partnerTransactions.some((t) => t.type === TransactionType.Income);
+      const hasExpenseType = partnerTransactions.some((t) => t.type === TransactionType.Expense);
+
+      // Determine partner type
+      if (hasIncomeType && !hasExpenseType) {
+        enhancedTransaction.partner.type = 'Supplier';
+      } else if (!hasIncomeType && hasExpenseType) {
+        enhancedTransaction.partner.type = 'Customer';
+      } else if (hasIncomeType && hasExpenseType) {
+        enhancedTransaction.partner.type = 'Customer & Supplier';
+      } else {
+        enhancedTransaction.partner.type = 'Unknown';
+      }
+    }
+
+    // Return enhanced transaction
+    return enhancedTransaction as any;
   }
 
   async updateTransaction(
@@ -53,7 +135,11 @@ class TransactionRepository implements ITransactionRepository {
   }
 
   async count(where: Prisma.TransactionWhereInput): Promise<number> {
-    return await prisma.transaction.count({ where });
+    return await prisma.transaction.count({
+      where: {
+        ...where,
+      },
+    });
   }
 
   async getFilterOptions(userId: string) {
@@ -119,6 +205,96 @@ class TransactionRepository implements ITransactionRepository {
       accounts: Array.from(accountsSet),
       categories: Array.from(categoriesSet),
       partners: partners.map((t) => t.partner?.name),
+    };
+  }
+
+  async getValidCategoryAccount(userId: string, type: TransactionType) {
+    let fromAccounts: any[] = [];
+    let toAccounts: any[] = [];
+    let fromCategories: any[] = [];
+    let toCategories: any[] = [];
+
+    if (type === TransactionType.Expense) {
+      [fromAccounts, toCategories] = await Promise.all([
+        prisma.account.findMany({
+          where: {
+            userId,
+            OR: [{ type: 'Payment' }, { type: 'CreditCard' }],
+          },
+          select: {
+            id: true,
+            name: true,
+            type: true,
+          },
+        }),
+        prisma.category.findMany({
+          where: { userId, type: 'Expense' },
+          select: {
+            id: true,
+            name: true,
+          },
+        }),
+      ]);
+    }
+
+    if (type === TransactionType.Income) {
+      [fromCategories, toAccounts] = await Promise.all([
+        prisma.category.findMany({
+          where: { userId, type: 'Income' },
+          select: {
+            id: true,
+            name: true,
+          },
+        }),
+        prisma.account.findMany({
+          where: {
+            userId,
+            OR: [{ type: 'Payment' }, { type: 'CreditCard' }, { type: 'Debt' }],
+          },
+
+          select: {
+            id: true,
+            name: true,
+            type: true,
+          },
+        }),
+      ]);
+    }
+
+    if (type === TransactionType.Transfer) {
+      [fromAccounts, toAccounts] = await Promise.all([
+        prisma.account.findMany({
+          where: {
+            userId,
+            OR: [
+              { type: 'Payment' },
+              { type: 'CreditCard' },
+              { type: 'Saving' },
+              { type: 'Lending' },
+            ],
+          },
+          select: {
+            id: true,
+            name: true,
+            type: true,
+          },
+        }),
+        prisma.account.findMany({
+          where: { userId },
+          select: {
+            id: true,
+            name: true,
+            type: true,
+          },
+        }),
+      ]);
+    }
+
+    return {
+      fromAccounts: fromAccounts,
+      toAccounts: toAccounts,
+      fromCategories: fromCategories,
+      toCategories: toCategories,
     };
   }
 

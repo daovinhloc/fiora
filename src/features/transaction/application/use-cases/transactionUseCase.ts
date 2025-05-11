@@ -1,9 +1,10 @@
 import { prisma } from '@/config';
 import { IAccountRepository } from '@/features/auth/domain/repositories/accountRepository.interface';
 import { accountRepository } from '@/features/auth/infrastructure/repositories/accountRepository';
-
-import { BooleanUtils } from '@/shared/lib/booleanUtils';
+import { categoryRepository } from '@/features/setting/api/infrastructure/repositories/categoryRepository';
+import { ICategoryRepository } from '@/features/setting/api/repositories/categoryRepository.interface';
 import { Messages } from '@/shared/constants/message';
+import { BooleanUtils } from '@/shared/lib/booleanUtils';
 import { PaginationResponse } from '@/shared/types/Common.types';
 import { TransactionGetPagination } from '@/shared/types/transaction.types';
 import { buildOrderByTransactionV2, buildWhereClause } from '@/shared/utils';
@@ -17,8 +18,6 @@ import {
 } from '@prisma/client';
 import { ITransactionRepository } from '../../domain/repositories/transactionRepository.interface';
 import { transactionRepository } from '../../infrastructure/repositories/transactionRepository';
-import { ICategoryRepository } from '@/features/setting/api/application/repositories/categoryRepository.interface';
-import { categoryRepository } from '@/features/setting/api/infrastructure/repositories/categoryRepository';
 
 class TransactionUseCase {
   constructor(
@@ -31,12 +30,8 @@ class TransactionUseCase {
     return this.transactionRepository.getTransactionsByUserId(userId);
   }
 
-  async getTransactions(
-    params: TransactionGetPagination,
-  ): Promise<PaginationResponse<Transaction> & { amountMin?: number; amountMax?: number }> {
-    const { page = 1, pageSize = 20, searchParams = '', filters, sortBy = {}, userId } = params;
-    const take = pageSize;
-    const skip = (page - 1) * pageSize;
+  async getTransactions(params: Partial<TransactionGetPagination>) {
+    const { searchParams = '', filters, sortBy = {}, userId } = params;
 
     let where = buildWhereClause(filters) as Prisma.TransactionWhereInput;
     if (searchParams) {
@@ -95,8 +90,6 @@ class TransactionUseCase {
         userId,
       },
       {
-        skip,
-        take,
         orderBy,
         include: {
           fromAccount: true,
@@ -127,6 +120,114 @@ class TransactionUseCase {
       amountMinAwaited,
     ]);
 
+    return {
+      data: transactions,
+      amountMax: Number(amountMax['_max']?.amount) || 0,
+      amountMin: Number(amountMin['_min']?.amount) || 0,
+      total,
+    };
+  }
+
+  async getTransactionsPagination(
+    params: TransactionGetPagination,
+  ): Promise<PaginationResponse<Transaction> & { amountMin?: number; amountMax?: number }> {
+    const { page = 1, pageSize = 20, searchParams = '', filters, sortBy = {}, userId } = params;
+    const take = pageSize;
+    const skip = (page - 1) * pageSize;
+
+    let where = buildWhereClause(filters) as Prisma.TransactionWhereInput;
+
+    if (searchParams) {
+      const typeSearchParams = searchParams.toLowerCase();
+      // test with Regex-Type Transaction
+      const regex = new RegExp('^' + typeSearchParams, 'i'); // ^: start with, i: ignore case
+      const typeTransaction = Object.values(TransactionType).find((type) => regex.test(type));
+
+      let typeTransactionWhere = '';
+
+      if (typeTransaction) {
+        typeTransactionWhere = typeTransaction;
+      }
+
+      // test with Regex-Date format YYYY-MM-DD
+      const dateRegex = /^\d{4}-\d{2}-\d{2}$/; // YYYY-MM-DD format
+      const date = new Date(typeSearchParams);
+      const isSearchDate = dateRegex.test(typeSearchParams) && !isNaN(date.getTime());
+
+      where = {
+        AND: [
+          where,
+          {
+            OR: [
+              { fromAccount: { name: { contains: typeSearchParams, mode: 'insensitive' } } },
+              { toAccount: { name: { contains: typeSearchParams, mode: 'insensitive' } } },
+              { partner: { name: { contains: typeSearchParams, mode: 'insensitive' } } },
+              {
+                amount: { gte: Number(typeSearchParams) || 0, lte: Number(typeSearchParams) || 0 },
+              },
+              // adding typeTransactionWhere to where clause if exists
+              ...(typeTransactionWhere
+                ? [{ type: typeTransactionWhere as unknown as TransactionType }]
+                : []),
+              ...(isSearchDate
+                ? [
+                    {
+                      date: {
+                        gte: new Date(typeSearchParams),
+                        lte: new Date(new Date(typeSearchParams).setHours(23, 59, 59)),
+                      },
+                    },
+                  ]
+                : []),
+            ],
+          },
+        ],
+      };
+    }
+
+    const orderBy = buildOrderByTransactionV2(sortBy);
+
+    const transactionAwaited = this.transactionRepository.findManyTransactions(
+      {
+        ...where,
+        isDeleted: false,
+        userId,
+      },
+      {
+        skip,
+        take,
+        orderBy,
+        include: {
+          fromAccount: true,
+          fromCategory: true,
+          toAccount: true,
+          toCategory: true,
+          partner: true,
+        },
+      },
+    );
+
+    const totalTransactionAwaited = this.transactionRepository.count({
+      ...where,
+      AND: [{ isDeleted: false }, { userId }],
+    });
+    // getting amountMax from transactions
+    const amountMaxAwaited = this.transactionRepository.aggregate({
+      where: { userId },
+      _max: { amount: true },
+    });
+    const amountMinAwaited = this.transactionRepository.aggregate({
+      where: { userId },
+      _min: { amount: true },
+    });
+
+    const [transactions, total, amountMax, amountMin] = await Promise.all([
+      transactionAwaited,
+      totalTransactionAwaited,
+      amountMaxAwaited,
+      amountMinAwaited,
+    ]);
+
     const totalPage = Math.ceil(total / pageSize);
 
     return {
@@ -138,6 +239,15 @@ class TransactionUseCase {
       amountMin: Number(amountMin['_min']?.amount) || 0,
       total,
     };
+  }
+
+  async getTransactionById(id: string, userId: string): Promise<Transaction | null> {
+    console.log('getTransactionById', id, userId);
+    const transaction = await this.transactionRepository.getTransactionById(id, userId);
+    if (!transaction) {
+      throw new Error(Messages.TRANSACTION_NOT_FOUND);
+    }
+    return transaction;
   }
 
   async viewTransaction(id: string, userId: string): Promise<Transaction> {
@@ -174,7 +284,7 @@ class TransactionUseCase {
           this.validateSufficientBalance(
             toAccount.balance!.toNumber(),
             amount,
-            `Tài khoản ${toAccount.name} không đủ số dư để hoàn tác giao dịch thu nhập.`,
+            `Account ${toAccount.name} does not have sufficient balance to reverse the income transaction.`,
           );
           await this.accountRepository.deductBalance(tx, toAccount.id, amount);
         }
@@ -185,7 +295,7 @@ class TransactionUseCase {
           this.validateSufficientBalance(
             toAccount.balance!.toNumber(),
             amount,
-            `Tài khoản ${toAccount.name} không đủ số dư để hoàn trả giao dịch chuyển khoản.`,
+            `Account ${toAccount.name} does not have sufficient balance to refund the transfer transaction.`,
           );
           await this.accountRepository.transferBalance(tx, toAccount.id, fromAccount.id, amount);
         }
@@ -201,6 +311,17 @@ class TransactionUseCase {
       accounts: filterOptions.accounts ?? [],
       categories: filterOptions.categories ?? [],
       partners: filterOptions.partners ?? [],
+    };
+  }
+
+  async getValidCategoryAccount(userId: string, type: TransactionType) {
+    const filterOptions = await this.transactionRepository.getValidCategoryAccount(userId, type);
+
+    return {
+      fromAccounts: filterOptions.fromAccounts ?? [],
+      toAccounts: filterOptions.toAccounts ?? [],
+      fromCategories: filterOptions.fromCategories ?? [],
+      toCategories: filterOptions.toCategories ?? [],
     };
   }
 
@@ -384,7 +505,11 @@ class TransactionUseCase {
         throw new Error(Messages.ACCOUNT_NOT_FOUND);
       }
 
-      if (account.type !== AccountType.Payment) {
+      if (
+        account.type !== AccountType.Payment &&
+        account.type !== AccountType.CreditCard &&
+        account.type !== AccountType.Debt
+      ) {
         throw new Error(Messages.INVALID_ACCOUNT_TYPE_FOR_INCOME);
       }
 
@@ -519,6 +644,10 @@ class TransactionUseCase {
     const amount = transaction.amount.toNumber();
     const productIds = products.map((p) => p.id);
     const splitAmount = amount / productIds.length;
+
+    if (productIds.toString() == '') {
+      return;
+    }
 
     const existingProducts = await tx.product.findMany({
       where: { id: { in: productIds } },

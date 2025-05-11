@@ -1,10 +1,10 @@
-import { Account, AccountType, Currency, Prisma } from '@prisma/client';
-import { IAccountRepository } from '../../domain/repositories/accountRepository.interface';
-import { Decimal } from '@prisma/client/runtime/library';
-import { accountRepository } from '../../infrastructure/repositories/accountRepository';
-import { convertUSDToVND } from '@/shared/utils';
 import { ITransactionRepository } from '@/features/transaction/domain/repositories/transactionRepository.interface';
 import { transactionRepository } from '@/features/transaction/infrastructure/repositories/transactionRepository';
+import { Account, AccountType, Currency, Prisma, Transaction } from '@prisma/client';
+import { Decimal } from '@prisma/client/runtime/library';
+import { IAccountRepository } from '../../domain/repositories/accountRepository.interface';
+import { accountRepository } from '../../infrastructure/repositories/accountRepository';
+import { convertCurrency } from '@/shared/utils/convertCurrency';
 
 const descriptions = {
   ['Payment']:
@@ -46,8 +46,6 @@ export class AccountUseCase {
       userId,
     } = params;
 
-    const currencyValue = currency === 'USD' ? convertUSDToVND(balance) : balance;
-
     if (parentId) {
       await this.validateParentAccount(parentId, type);
       const subAccount = await this.accountRepository.create({
@@ -56,7 +54,7 @@ export class AccountUseCase {
         description: descriptions[type as keyof typeof descriptions],
         icon: icon,
         userId,
-        balance: currencyValue,
+        balance: new Decimal(balance),
         currency,
         limit: type === AccountType.CreditCard ? limit : new Decimal(0),
         parentId: parentId,
@@ -75,7 +73,7 @@ export class AccountUseCase {
         description: descriptions[type as keyof typeof descriptions],
         icon: icon,
         userId,
-        balance: currencyValue,
+        balance: new Decimal(balance),
         currency,
         limit: type === AccountType.CreditCard ? limit : new Decimal(0),
         parentId: null,
@@ -102,7 +100,12 @@ export class AccountUseCase {
   }
 
   async findById(id: string): Promise<Account | null> {
-    return this.accountRepository.findById(id);
+    const account = await this.accountRepository.findById(id);
+    if (!account) {
+      throw new Error('Account not found');
+    }
+
+    return account;
   }
 
   async findManyByCondition(where: Prisma.AccountWhereInput) {
@@ -134,8 +137,8 @@ export class AccountUseCase {
     });
   }
 
-  async getAllAccountByUserId(userId: string): Promise<Account[] | []> {
-    return this.accountRepository.findManyWithCondition(
+  async getAllAccountByUserId(userId: string, currency: Currency) {
+    const accountRes = (await this.accountRepository.findManyWithCondition(
       {
         userId,
       },
@@ -147,14 +150,74 @@ export class AccountUseCase {
         },
         orderBy: [
           {
-            type: 'asc',
-          },
-          {
-            balance: 'asc',
+            balance: 'desc',
           },
         ],
       },
-    );
+    )) as Prisma.AccountGetPayload<{
+      include: {
+        children: true;
+        toTransactions: true;
+        fromTransactions: true;
+      };
+    }>[];
+
+    const accountWithConvertedBalance = accountRes.map((acc: any) => {
+      const convertedBalance = convertCurrency(
+        acc.balance?.toNumber() || 0,
+        acc.currency,
+        currency,
+      );
+
+      return {
+        ...acc,
+        balance: convertedBalance.toString(),
+        currency: currency,
+        ...(acc.children && {
+          children: acc.children.map((child: Account) => {
+            const childConvertedBalance = convertCurrency(
+              child.balance?.toNumber() || 0,
+              child.currency,
+              currency,
+            );
+            return {
+              ...child,
+              balance: childConvertedBalance.toString(),
+              currency: currency,
+            };
+          }),
+        }),
+        ...(acc.toTransactions && {
+          toTransactions: acc.toTransactions.map((tx: Transaction) => {
+            const txConvertedBalance = convertCurrency(
+              tx.amount?.toNumber() || 0,
+              tx.currency,
+              currency,
+            );
+            return {
+              ...tx,
+              amount: txConvertedBalance.toString(),
+              currency: currency,
+            };
+          }),
+        }),
+        ...(acc.fromTransactions && {
+          fromTransactions: acc.fromTransactions.map((tx: Transaction) => {
+            const txConvertedBalance = convertCurrency(
+              tx.amount?.toNumber() || 0,
+              tx.currency,
+              currency,
+            );
+            return {
+              ...tx,
+              amount: txConvertedBalance.toString(),
+              currency: currency,
+            };
+          }),
+        }),
+      };
+    });
+    return accountWithConvertedBalance;
   }
 
   async fetchBalanceByUserId(userId: string): Promise<any> {

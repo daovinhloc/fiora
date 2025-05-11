@@ -1,17 +1,19 @@
-import { productRepository } from '@/features/setting/api/infrastructure/repositories/productRepository';
 import { Messages } from '@/shared/constants/message';
 
-import { Product, ProductType } from '@prisma/client';
-import { Decimal, JsonArray } from '@prisma/client/runtime/library';
-import { categoryProductRepository } from '../../infrastructure/repositories/categoryProductRepository';
 import { prisma } from '@/config';
+import { PaginationResponse, ProductItem } from '@/shared/types';
+import { convertCurrency } from '@/shared/utils/exchangeRate';
+import { Currency, Product, ProductType } from '@prisma/client';
+import { Decimal } from '@prisma/client/runtime/library';
+
+import { categoryProductRepository } from '../../infrastructure/repositories/categoryProductRepository';
+import { productRepository } from '../../infrastructure/repositories/productRepository';
+import { ICategoryProductRepository } from '../../repositories/categoryProductRepository.interface';
 import {
   IProductRepository,
   ProductCreation,
   ProductUpdate,
-} from '../../application/repositories/productRepository.interface';
-import { ICategoryProductRepository } from '../../application/repositories/categoryProductRepository.interface';
-import { PaginationResponse, ProductItem } from '@/shared/types';
+} from '../../repositories/productRepository.interface';
 
 class ProductUseCase {
   private productRepository: IProductRepository;
@@ -25,13 +27,27 @@ class ProductUseCase {
     this.categoryProductRepository = categoryProductRepository;
   }
 
-  async getAllProducts(params: {
+  async getAllProducts(params: { userId: string }): Promise<Product[]> {
+    const { userId } = params;
+    try {
+      const products = await this.productRepository.findManyProducts({
+        userId,
+      });
+
+      return products;
+    } catch (error: any) {
+      throw new Error('Failed to get all products ', error.message);
+    }
+  }
+
+  async getAllProductsPagination(params: {
     userId: string;
     page?: number;
     pageSize?: number;
+    currency?: Currency;
   }): Promise<PaginationResponse<Product>> {
     try {
-      const { userId, page = 1, pageSize = 20 } = params;
+      const { userId, page = 1, pageSize = 20, currency = 'VND' } = params;
       const productsAwaited = this.productRepository.findManyProducts(
         { userId },
         { skip: (page - 1) * pageSize, take: pageSize },
@@ -47,8 +63,23 @@ class ProductUseCase {
 
       const totalPage = Math.ceil(count / pageSize);
 
+      // Transform the product price to the user's target currency if needed
+      const transformedProductsAwaited = products.map(async (product) => {
+        const transformedPrice =
+          (await convertCurrency(product.price, product.currency, currency)) ||
+          product.price.toNumber();
+
+        return {
+          ...product,
+          price: transformedPrice,
+          currency: currency,
+        };
+      });
+
+      const transformedProducts = await Promise.all(transformedProductsAwaited);
+
       return {
-        data: products,
+        data: transformedProducts,
         page,
         pageSize,
         totalPage,
@@ -79,15 +110,22 @@ class ProductUseCase {
   async getProductById(params: { userId: string; id: string }) {
     const { userId, id } = params;
     try {
-      const product = await this.productRepository.findUniqueProduct(
+      const product = await this.productRepository.findProductById(
         {
           id,
           userId,
         },
         {
           include: {
+            items: {
+              select: {
+                id: true,
+                icon: true,
+                name: true,
+                description: true,
+              },
+            },
             transactions: true,
-            productItems: true,
           },
         },
       );
@@ -96,7 +134,26 @@ class ProductUseCase {
         throw new Error(Messages.PRODUCT_NOT_FOUND);
       }
 
-      return product;
+      const [createdBy, updatedBy] = await Promise.all([
+        product.createdBy
+          ? prisma.user.findFirst({
+              where: { id: product.createdBy },
+              select: { id: true, name: true, email: true, image: true },
+            })
+          : null,
+        product.updatedBy
+          ? prisma.user.findFirst({
+              where: { id: product.updatedBy },
+              select: { id: true, name: true, email: true, image: true },
+            })
+          : null,
+      ]);
+
+      return {
+        ...product,
+        createdBy: createdBy || null,
+        updatedBy: updatedBy || null,
+      };
     } catch (error: any) {
       throw new Error(error.message || Messages.GET_PRODUCT_FAILED);
     }
@@ -114,6 +171,7 @@ class ProductUseCase {
         type,
         category_id,
         items,
+        currency = Currency.VND,
       } = params;
 
       const category = await this.categoryProductRepository.findUniqueCategoryProduct({
@@ -137,15 +195,16 @@ class ProductUseCase {
             type,
             catId: category_id,
             createdBy: userId,
+            currency: currency,
             ...(description && { description }),
           },
           include: {
-            productItems: true,
+            items: true,
           },
         });
 
         if (items && Array.isArray(items)) {
-          const itemsRes = await tx.productItems.createMany({
+          const itemsRes = await tx.productItems.createManyAndReturn({
             data: items.map((item) => ({
               icon: item.icon,
               name: item.name,
@@ -159,7 +218,7 @@ class ProductUseCase {
             throw new Error(Messages.CREATE_PRODUCT_ITEM_FAILED);
           }
 
-          product['productItems'] = itemsRes as unknown as ProductItem[];
+          product['items'] = itemsRes as unknown as ProductItem[];
         }
 
         return product;
@@ -183,7 +242,9 @@ class ProductUseCase {
       type,
       category_id,
       items,
+      currency = Currency.VND,
     } = params;
+
     let category = null;
 
     if (category_id) {
@@ -200,15 +261,11 @@ class ProductUseCase {
       throw new Error(Messages.MISSING_PARAMS_INPUT + ' id');
     }
 
-    const foundProduct = await this.productRepository.findUniqueProduct({ id });
+    const foundProduct = await this.productRepository.findProductById({ id });
     if (!foundProduct) {
       throw new Error(Messages.PRODUCT_NOT_FOUND);
     }
 
-    let itemsJSON = [] as JsonArray;
-    if (Array.isArray(items)) {
-      itemsJSON = items.map((item) => JSON.stringify(item));
-    }
     const updatedProduct = await this.productRepository.updateProduct(
       {
         id,
@@ -222,7 +279,7 @@ class ProductUseCase {
         ...(tax_rate && { taxRate: tax_rate }),
         ...(price && { price }),
         ...(type && { type }),
-        ...(itemsJSON.length > 0 && { items: itemsJSON }),
+        ...(currency && { currency }),
         updatedBy: userId,
       },
     );
@@ -230,13 +287,51 @@ class ProductUseCase {
     if (!updatedProduct) {
       throw new Error(Messages.UPDATE_PRODUCT_FAILED);
     }
+
+    // update product items
+    if (items && Array.isArray(items)) {
+      for await (const item of items) {
+        if (item.id) {
+          await prisma.productItems.update({
+            where: { id: item.id },
+            data: {
+              icon: item.icon,
+              name: item.name,
+              description: item.description,
+              userId,
+              productId: updatedProduct.id,
+              updatedBy: userId,
+            },
+          });
+        } else {
+          await prisma.productItems.create({
+            data: {
+              icon: item.icon,
+              name: item.name,
+              description: item.description,
+              userId,
+              productId: updatedProduct.id,
+              createdBy: userId,
+            },
+          });
+        }
+      }
+    }
+
     return updatedProduct;
   }
 
   async deleteProduct(params: { userId: string; id: string }) {
     const { userId, id } = params;
 
-    const foundProduct = await this.productRepository.findUniqueProduct({ id, userId });
+    const foundProduct = (await this.productRepository.findProductById(
+      { id, userId },
+      {
+        include: {
+          transactions: true,
+        },
+      },
+    )) as Product & { transactions: any[] };
     if (!foundProduct) {
       throw new Error(Messages.PRODUCT_NOT_FOUND);
     }
@@ -260,12 +355,12 @@ class ProductUseCase {
     }
 
     // Checking existence of source and target products
-    const sourceProduct = await this.productRepository.findUniqueProduct({ id: sourceId });
+    const sourceProduct = await this.productRepository.findProductById({ id: sourceId });
     if (!sourceProduct) {
       throw new Error(Messages.SOURCE_PRODUCT_NOT_FOUND);
     }
 
-    const targetProduct = await this.productRepository.findUniqueProduct({ id: targetId });
+    const targetProduct = await this.productRepository.findProductById({ id: targetId });
     if (!targetProduct) {
       throw new Error(Messages.TARGET_PRODUCT_NOT_FOUND);
     }

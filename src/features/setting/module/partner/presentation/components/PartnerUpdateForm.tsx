@@ -1,23 +1,26 @@
 'use client';
 
+import { FormConfig } from '@/components/common/forms';
 import CustomDateTimePicker from '@/components/common/forms/date-time-picker/CustomDateTimePicker';
 import InputField from '@/components/common/forms/input/InputField';
 import SelectField from '@/components/common/forms/select/SelectField';
 import TextareaField from '@/components/common/forms/text-area/TextareaField';
 import UploadField from '@/components/common/forms/upload/UploadField';
-import GlobalForm from '@/components/common/forms/GlobalForm';
-import { uploadToFirebase } from '@/features/setting/module/landing/landing/firebaseUtils';
 import { Partner } from '@/features/setting/module/partner/domain/entities/Partner';
-import { fetchPartners } from '@/features/setting/module/partner/slices/actions/fetchPartnersAsyncThunk';
 import {
   UpdatePartnerFormValues,
   updatePartnerSchema,
 } from '@/features/setting/module/partner/presentation/schema/updatePartner.schema';
+import { fetchPartners } from '@/features/setting/module/partner/slices/actions/fetchPartnersAsyncThunk';
 import { updatePartner } from '@/features/setting/module/partner/slices/actions/updatePartnerAsyncThunk';
+import { uploadToFirebase } from '@/shared/lib';
+import { setErrorsFromObject } from '@/shared/lib/forms/setErrorsFromObject';
 import { useAppDispatch, useAppSelector } from '@/store';
+import { yupResolver } from '@hookform/resolvers/yup';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { FormProvider, useForm } from 'react-hook-form';
 import { toast } from 'sonner';
 
 interface PartnerUpdateFormProps {
@@ -31,13 +34,28 @@ export default function PartnerUpdateForm({ initialData }: PartnerUpdateFormProp
   const { data: session, status } = useSession();
   const [isDataFetched, setIsDataFetched] = useState(false);
 
+  const methods = useForm<UpdatePartnerFormValues>({
+    resolver: yupResolver(updatePartnerSchema),
+    defaultValues: {
+      name: initialData?.name || '',
+      logo: initialData?.logo || null,
+      identify: initialData?.identify || null,
+      dob: initialData?.dob || null,
+      taxNo: initialData?.taxNo || null,
+      address: initialData?.address || null,
+      email: initialData?.email || null,
+      phone: initialData?.phone || null,
+      description: initialData?.description || null,
+      parentId: initialData?.parentId || 'none',
+    },
+    mode: 'onChange',
+  });
+
   useEffect(() => {
     const fetchPartnersData = async () => {
       if (status === 'authenticated' && session?.user?.id && !isDataFetched) {
         try {
-          await dispatch(
-            fetchPartners({ userId: session.user.id, page: 1, pageSize: 100 }),
-          ).unwrap();
+          await dispatch(fetchPartners({ page: 1, pageSize: 100 })).unwrap();
           setIsDataFetched(true);
         } catch (error) {
           console.error('Error fetching partners:', error);
@@ -49,21 +67,14 @@ export default function PartnerUpdateForm({ initialData }: PartnerUpdateFormProp
     fetchPartnersData();
   }, [dispatch, status, session, isDataFetched]);
 
-  // Check if current partner has children
-  const hasChildren = partners.some((partner) => partner.parentId === initialData?.id);
+  const hasChildren = partners.some((partner: any) => partner.parentId === initialData?.id);
 
-  // Filter parent options:
-  // 1. Exclude the current partner itself
-  // 2. Only include partners that don't have a parent (top-level)
-  // 3. If current partner has children, don't allow it to become a child of another partner
   const parentOptions = [
     { value: 'none', label: 'None' },
     ...partners
       .filter((p) => {
-        // Exclude the current partner
         if (p.id === initialData?.id) return false;
 
-        // Only include top-level partners (no parent)
         if (p.parentId !== null) return false;
 
         return true;
@@ -74,34 +85,7 @@ export default function PartnerUpdateForm({ initialData }: PartnerUpdateFormProp
       })),
   ];
 
-  const defaultValues: Partial<UpdatePartnerFormValues> = {
-    name: initialData?.name || '',
-    logo: initialData?.logo || null,
-    identify: initialData?.identify || null,
-    dob: initialData?.dob || null,
-    taxNo: initialData?.taxNo || null,
-    address: initialData?.address || null,
-    email: initialData?.email || null,
-    phone: initialData?.phone || null,
-    description: initialData?.description || null,
-    parentId: initialData?.parentId || 'none',
-  };
-
-  // If this partner has children, disable the parent selection field
   const fields = [
-    <SelectField
-      key="parentId"
-      name="parentId"
-      label="Parent"
-      options={parentOptions}
-      placeholder="Select a parent partner"
-      defaultValue={initialData?.parentId || 'none'}
-      disabled={hasChildren}
-      helperText={
-        hasChildren ? 'Cannot change parent because this partner has children' : undefined
-      }
-    />,
-    <InputField key="name" name="name" label="Name" placeholder="Name" />,
     <UploadField
       key="logo"
       label="Logo"
@@ -109,35 +93,54 @@ export default function PartnerUpdateForm({ initialData }: PartnerUpdateFormProp
       initialImageUrl={initialData?.logo || null}
       previewShape="circle"
     />,
+    <InputField key="name" name="name" label="Name" placeholder="Nguyen Van A" />,
+    <SelectField
+      key="parentId"
+      name="parentId"
+      label="Parent"
+      options={parentOptions}
+      placeholder="E.g., FIORA"
+      defaultValue={initialData?.parentId || 'none'}
+      disabled={hasChildren}
+      helperText={
+        hasChildren ? 'Cannot change parent because this partner has children' : undefined
+      }
+    />,
     <TextareaField
       key="description"
       name="description"
       label="Description"
-      placeholder="Enter description"
+      placeholder="E.g., Leading provider of technology solutions"
     />,
     <CustomDateTimePicker
       key="dob"
       name="dob"
       label="Date of Birth"
-      placeholder="Select date of birth"
+      placeholder="15/05/1990"
       showYearDropdown
       showMonthDropdown
       dropdownMode="select"
       dateFormat="dd/MM/yyyy"
     />,
+    <InputField key="identify" name="identify" label="Identification" placeholder="123456789012" />,
+    <InputField key="taxNo" name="taxNo" label="Tax Number" placeholder="0101234567" />,
+    <InputField key="phone" name="phone" label="Phone" placeholder="0123456789" />,
     <InputField
-      key="identify"
-      name="identify"
-      label="Identification"
-      placeholder="Identification Number"
+      key="address"
+      name="address"
+      label="Address"
+      placeholder="123 Le Loi Street, District 1, Ho Chi Minh City"
     />,
-    <InputField key="taxNo" name="taxNo" label="Tax Number" placeholder="Tax Number" />,
-    <InputField key="phone" name="phone" label="Phone" placeholder="Phone Number" />,
-    <InputField key="address" name="address" label="Address" placeholder="Address" />,
-    <InputField key="email" name="email" label="Email" placeholder="Email" type="email" />,
+    <InputField
+      key="email"
+      name="email"
+      label="Email"
+      placeholder="contact@fiora.com"
+      type="email"
+    />,
   ];
 
-  const onSubmit = async (data: UpdatePartnerFormValues) => {
+  const handleSubmit = async (data: UpdatePartnerFormValues) => {
     try {
       let finalLogoUrl = data.logo;
 
@@ -149,7 +152,6 @@ export default function PartnerUpdateForm({ initialData }: PartnerUpdateFormProp
         });
       }
 
-      // Always send all fields, using the original values if not changed
       const updateData = {
         id: initialData?.id,
         name: data.name !== undefined ? data.name : initialData?.name,
@@ -166,20 +168,24 @@ export default function PartnerUpdateForm({ initialData }: PartnerUpdateFormProp
 
       await dispatch(updatePartner(updateData)).unwrap();
       router.push('/setting/partner');
-    } catch (error) {
-      toast.error('Failed to update partner');
-      console.error(error);
+    } catch (error: any) {
+      if (error.message) {
+        setErrorsFromObject(error.message, methods.setError);
+      } else {
+        toast.error('Failed to update partner');
+      }
     }
   };
 
   return (
-    <>
-      <GlobalForm
-        fields={fields}
-        schema={updatePartnerSchema}
-        onSubmit={onSubmit}
-        defaultValues={defaultValues}
-      />
-    </>
+    <FormProvider {...methods}>
+      <form onSubmit={methods.handleSubmit(handleSubmit)} className="space-y-4">
+        <FormConfig
+          methods={methods}
+          fields={fields}
+          onBack={() => router.push('/setting/partner')}
+        />
+      </form>
+    </FormProvider>
   );
 }

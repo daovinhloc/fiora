@@ -4,9 +4,6 @@ import React from 'react';
 
 interface TypeSelectProps {
   name: string;
-  // value?: Date | undefined;
-  // onChange?: any;
-  // error?: FieldError;
   [key: string]: any;
 }
 
@@ -26,8 +23,10 @@ const DateSelectField: React.FC<TypeSelectProps> = ({ name }) => {
               placeholder="Select date of birth"
               showYearDropdown
               showMonthDropdown
+              required
               dropdownMode="select"
-              dateFormat="dd/MM/yyyy"
+              dateFormat="dd/MM/yyyy HH:mm:ss"
+              containTimePicker
             />
           </div>
         </FormItem>

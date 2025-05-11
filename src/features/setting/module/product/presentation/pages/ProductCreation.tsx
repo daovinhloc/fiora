@@ -1,23 +1,23 @@
 'use client';
 import Loading from '@/components/common/atoms/Loading';
-import { Icons } from '@/components/Icon';
 import { Button } from '@/components/ui/button';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { FIREBASE_GS_URL, FIREBASE_STORAGE_URL } from '@/shared/constants';
 import { useAppDispatch, useAppSelector } from '@/store';
 import { yupResolver } from '@hookform/resolvers/yup';
-import { isEmpty } from 'lodash';
+import isEmpty from 'lodash/isEmpty';
 import { Trash2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { FormProvider, useForm } from 'react-hook-form';
 import { toast } from 'sonner';
-import { removeFromFirebase, uploadToFirebase } from '../../../landing/landing/firebaseUtils';
+
 import { productDIContainer } from '../../di/productDIContainer';
 import { TYPES } from '../../di/productDIContainer.type';
 import { Product } from '../../domain/entities';
 import { GetSingleProductUseCase } from '../../domain/usecases';
 
+import { removeFromFirebase, uploadToFirebase } from '@/shared/lib';
+import { setProductDetail } from '../../slices';
 import {
   createProduct,
   deleteProductAsyncThunk,
@@ -41,8 +41,6 @@ type ProductCreationType = {
 
 const ProductCreation = ({ productId }: ProductCreationType) => {
   const { page, limit } = useAppSelector((state) => state.productManagement.categories);
-  const isUpdatingProduct = useAppSelector((state) => state.productManagement.isUpdatingProduct);
-  const isCreatingProduct = useAppSelector((state) => state.productManagement.isCreatingProduct);
   const { page: pageProduct, pageSize } = useAppSelector(
     (state) => state.productManagement.products,
   );
@@ -59,17 +57,14 @@ const ProductCreation = ({ productId }: ProductCreationType) => {
   const method = useForm<ProductFormValues>({
     resolver: yupResolver(productSchema),
     defaultValues: defaultProductFormValue,
+    mode: 'onChange',
   });
 
-  const {
-    reset,
-    formState: { isValid, isSubmitting },
-  } = method;
+  const { reset } = method;
 
   useEffect(() => {
     const handleGetProduct = async () => {
       setIsLoadingGetProduct(true);
-      dispatch(getProductsAsyncThunk({ page: pageProduct, pageSize }));
       try {
         await dispatch(fetchCategoriesProduct({ page, pageSize: limit })).unwrap();
 
@@ -78,7 +73,11 @@ const ProductCreation = ({ productId }: ProductCreationType) => {
             TYPES.IGetSingleProductUseCase,
           );
           const product = await getSingleProductUseCase.execute(productId);
+          if (!isEmpty(product.transactions)) {
+            dispatch(getProductsAsyncThunk({ page: pageProduct, pageSize }));
+          }
           if (product) {
+            dispatch(setProductDetail(product));
             reset({
               id: product.id,
               icon: product.icon || '',
@@ -89,6 +88,7 @@ const ProductCreation = ({ productId }: ProductCreationType) => {
               type: product.type ?? '',
               catId: product.catId || '',
               items: product.items || [],
+              currency: product.currency ?? '',
             });
           }
           setProductToEdit(product);
@@ -160,12 +160,16 @@ const ProductCreation = ({ productId }: ProductCreationType) => {
       if (formattedData.icon && formattedData.icon.startsWith('blob:')) {
         const response = await fetch(formattedData.icon);
         const blob = await response.blob();
+
         const fileName = formattedData.name.replace(/\s+/g, '_').toLowerCase() + '_' + Date.now();
+        const file = new File([blob], fileName, { type: blob.type });
+
         const firebaseUrl = await uploadToFirebase({
-          file: blob,
+          file: file,
           path: 'images/product_icons',
           fileName,
         });
+
         formattedData = {
           ...formattedData,
           icon: firebaseUrl,
@@ -181,7 +185,7 @@ const ProductCreation = ({ productId }: ProductCreationType) => {
         return;
       }
 
-      await dispatch(createProduct(formattedData))
+      await dispatch(createProduct({ data: formattedData, setError: method.setError }))
         .unwrap()
         .then(() => {
           method.reset(defaultProductFormValue);
@@ -191,46 +195,6 @@ const ProductCreation = ({ productId }: ProductCreationType) => {
       console.error('Error creating/updating product:', error);
     }
   };
-
-  const renderSubmitButtonDefault = () => (
-    <TooltipProvider>
-      <div className="flex justify-between gap-4 mt-6">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="outline"
-              type="button"
-              onClick={() => router.back()}
-              className="w-32 h-12 flex items-center justify-center border-gray-300 text-gray-700 hover:bg-gray-50 hover:text-gray-900 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-white transition-colors duration-200"
-            >
-              <Icons.circleArrowLeft className="h-5 w-5" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>
-            <p>Cancel and go back</p>
-          </TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              type="submit"
-              disabled={!isValid || isCreatingProduct || isUpdatingProduct}
-              className="w-32 h-12 flex items-center justify-center bg-blue-600 hover:bg-blue-700 text-white disabled:bg-blue-400 disabled:cursor-not-allowed transition-colors duration-200"
-            >
-              {isSubmitting ? (
-                <Icons.spinner className="animate-spin h-5 w-5" />
-              ) : (
-                <Icons.check className="h-5 w-5" />
-              )}
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>
-            <p>{isSubmitting ? 'Submiting...' : 'Submit'}</p>
-          </TooltipContent>
-        </Tooltip>
-      </div>
-    </TooltipProvider>
-  );
 
   return (
     <section className="mb-10">
@@ -250,13 +214,11 @@ const ProductCreation = ({ productId }: ProductCreationType) => {
           {/* Form tạo/cập nhật sản phẩm */}
           <form onSubmit={method.handleSubmit(handleSubmit)} id="hook-form">
             <div className="mb-6">
-              <ProductForm method={method} productToEdit={productToEdit} />
+              <ProductForm />
             </div>
-
-            {renderSubmitButtonDefault()}
           </form>
 
-          <ProductCatCreationDialog />
+          <ProductCatCreationDialog setValue={method.setValue} />
           <DeleteProductDialog
             product={productToDelete}
             open={isDialogOpen}

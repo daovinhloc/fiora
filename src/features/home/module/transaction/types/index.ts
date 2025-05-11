@@ -1,12 +1,7 @@
+import { OrderType } from '@/shared/types';
 import { Transaction } from '@prisma/client';
 
-export type OrderType = 'asc' | 'desc' | 'none';
-
-export type DropdownOption = {
-  value: string;
-  label: string;
-  disabled?: boolean;
-};
+export type DropdownOption = { value: string; label: string; disabled?: boolean; icon?: string };
 
 export type TransactionPartner = {
   id: string;
@@ -25,6 +20,7 @@ export type TransactionPartner = {
   createdBy: string;
   updatedBy: string | null;
   parentId: string | null;
+  type?: string;
 };
 
 export type TransactionAccount = {
@@ -61,6 +57,13 @@ export type TransactionCategory = {
   tax_rate: string | null;
 };
 
+export type TransactionSubjectStamp = {
+  id: string;
+  name: string;
+  email: string;
+  image: string | null;
+};
+
 export interface IRelationalTransaction extends Transaction {
   fromAccountId: string | null;
   fromCategoryId: string | null;
@@ -72,8 +75,8 @@ export interface IRelationalTransaction extends Transaction {
   deletedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
-  createdBy: string;
-  updatedBy: string | null;
+  createdBy: any;
+  updatedBy: any;
   fromAccount?: TransactionAccount | null;
   fromCategory?: TransactionCategory | null;
   toAccount?: TransactionAccount | null;
@@ -99,38 +102,6 @@ export type TransactionColumn =
 
 export type TransactionTableColumnKey = { [key in TransactionColumn]: TransactionTableColumn };
 
-export type TransactionFilterComparator =
-  | 'equals'
-  | 'contains'
-  | 'startsWith'
-  | 'endsWith'
-  | 'gt' //greater than
-  | 'gte' //greater than or equal to
-  | 'lt' //less than
-  | 'lte' //less than or equal to
-  | 'some' // for array
-  | 'every'; // for array
-
-export type TransactionFilterOperator = 'AND' | 'OR';
-
-export type PrimitiveType = string | number | boolean | Date | null;
-
-export type TransactionFilterObject = {
-  [key: string | TransactionFilterComparator | TransactionFilterOperator]:
-    | PrimitiveType
-    | TransactionFilterComparator
-    | TransactionFilterObject;
-};
-
-export type TransactionFilterCriteria = {
-  filters?: TransactionFilterObject;
-  sortBy?: {
-    [key: string]: OrderType;
-  };
-  userId: string;
-  search?: string;
-};
-
 export type ITransactionPaginatedResponse = {
   data: Transaction[];
   amountMin: number;
@@ -142,10 +113,8 @@ export type ITransactionPaginatedResponse = {
 };
 
 export type TransactionFilterOptionResponse = {
-  fromAccounts: string[];
-  toAccounts: string[];
-  fromCategories: string[];
-  toCategories: string[];
+  accounts: string[];
+  categories: string[];
   partners: string[];
 };
 

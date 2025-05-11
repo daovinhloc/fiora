@@ -36,7 +36,7 @@ interface CategoryState {
     total: number;
     hasMore: boolean;
   };
-  error: string | null;
+  productDetail: Product | null;
 }
 
 export const initialProductState: CategoryState = {
@@ -64,7 +64,6 @@ export const initialProductState: CategoryState = {
     total: 0,
     hasMore: true,
   },
-  error: null,
   isCreatingProduct: false,
   isUpdatingProduct: false,
   isDeletingProduct: false,
@@ -75,4 +74,5 @@ export const initialProductState: CategoryState = {
   ProductCategoryFormState: 'add',
   ProductCategoryToEdit: null,
   ProductIdToTransfer: '',
+  productDetail: null,
 };

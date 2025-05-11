@@ -1,7 +1,8 @@
-import { ProductType } from '@prisma/client';
+import { Currency, ProductType } from '@prisma/client';
 import * as yup from 'yup';
 
 const itemSchema = yup.object().shape({
+  id: yup.string(),
   name: yup.string().required('Item name is required').max(50, 'Maximum 50 characters'),
   icon: yup.string().required('Item icon is required'),
   description: yup.string().max(500, 'Maximum 500 characters'),
@@ -24,6 +25,7 @@ const productSchema = yup.object({
     .oneOf(Object.values(ProductType))
     .required('Product type is required'),
   catId: yup.string().required('Category is required'),
+  currency: yup.string().required('Currency is required'),
   items: yup.array().of(itemSchema),
 });
 
@@ -34,8 +36,9 @@ export const defaultProductFormValue: any = {
   price: 0,
   taxRate: 0,
   type: 'Product',
-  categoryId: '',
+  catId: '',
   items: [],
+  currency: Currency.VND,
 };
 
 // Define the form values type

@@ -1,5 +1,4 @@
-import { JsonArray, JsonValue } from '@prisma/client/runtime/library';
-import { ProductFormValues, ProductItem } from '../../presentation/schema/addProduct.schema';
+import { ProductFormValues } from '../../presentation/schema/addProduct.schema';
 
 import { format } from 'date-fns';
 import {
@@ -50,13 +49,17 @@ export class ProductMapper {
       name: item.name,
       type: item.type,
       description: item.description ?? '',
-      items: ProductMapper.parseServerItemToList(item.items),
+      // items: ProductMapper.parseServerItemToList(item.items),
+      items: item.items ?? [],
       taxRate: Number(item.taxRate),
       catId: item.catId ?? '',
       icon: item.icon,
+      currency: item.currency,
       createdAt: String(item.createdAt),
       updatedAt: String(item.updatedAt),
       transactions: item.transactions,
+      createdBy: item.createdBy,
+      updatedBy: item.updatedBy,
     };
   }
 
@@ -103,7 +106,8 @@ export class ProductMapper {
             name: productItem.product.name,
             type: productItem.product.type,
             description: productItem.product.description ?? '',
-            items: ProductMapper.parseServerItemToList(productItem.product.items),
+            // items: ProductMapper.parseServerItemToList(productItem.product.items),
+            items: productItem.product.items ?? [],
             taxRate: productItem.product.taxRate ? Number(productItem.product.taxRate) : 0,
             catId: productItem.product.catId ?? '',
             icon: productItem.product.icon,
@@ -129,6 +133,7 @@ export class ProductMapper {
       type: request.type,
       category_id: request.catId,
       items: request.items,
+      currency: request.currency,
     };
   }
 
@@ -143,6 +148,7 @@ export class ProductMapper {
       type: request.type,
       category_id: request.catId,
       items: request.items,
+      currency: request.currency,
     };
   }
 
@@ -154,14 +160,15 @@ export class ProductMapper {
       icon: response.data.icon,
       price: Number(response.data.price),
       taxRate: Number(response.data.taxRate),
-      items: Array.isArray(response.data.items)
-        ? ProductMapper.parseServerItemToList(response.data.items as JsonArray)
-        : [],
+      items: response.data.items ?? [],
       transactions: response.data.transactions,
       catId: response.data.catId ?? '',
       type: response.data.type,
+      currency: response.data.currency,
       createdAt: new Date(response.data.createdAt).toISOString(),
       updatedAt: new Date(response.data.updatedAt).toISOString(),
+      createdBy: response.data.createdBy,
+      updatedBy: response.data.updatedBy,
     };
   }
 
@@ -173,9 +180,9 @@ export class ProductMapper {
       pageSize,
       totalPage,
       data: data.map((item) => {
-        const items: ProductItem[] = Array.isArray(item.items)
-          ? ProductMapper.parseServerItemToList(item.items as JsonArray)
-          : [];
+        // const items: ProductItem[] = Array.isArray(item.items)
+        //   ? ProductMapper.parseServerItemToList(item.items as JsonArray)
+        //   : [];
         const transactions: Transaction[] =
           item.transactions?.map(
             (transaction) =>
@@ -196,56 +203,21 @@ export class ProductMapper {
           item.icon,
           Number(item.price),
           Number(item.taxRate),
-          items,
+          item.items,
           item.catId ?? '',
           item.type,
           item.createdAt ? format(new Date(item.createdAt), 'dd/MM/yyyy HH:mm:ss') : '',
           item.updatedAt ? format(new Date(item.updatedAt), 'dd/MM/yyyy HH:mm:ss') : '',
           transactions,
+          item.currency,
+          item.createdBy,
+          item.updatedBy,
         );
       }),
     } as ProductsGetResponse;
 
     return dataResponse;
   }
-
-  static parseServerItemToList(items: JsonValue): ProductItem[] {
-    if (items === null) {
-      return [];
-    }
-
-    if (!Array.isArray(items)) {
-      console.error(`Expected an array but received:`, items);
-      return [];
-    }
-
-    const result: ProductItem[] = [];
-
-    items.forEach((item) => {
-      if (typeof item === 'string') {
-        try {
-          const parsedObject = JSON.parse(item);
-          if (
-            parsedObject &&
-            typeof parsedObject === 'object' &&
-            'name' in parsedObject &&
-            'description' in parsedObject
-          ) {
-            result.push({
-              name: String(parsedObject.name),
-              description: String(parsedObject.description),
-              icon: String(parsedObject.icon),
-            });
-          }
-        } catch (error) {
-          console.error(`Lỗi khi parse JSON:`, error);
-        }
-      }
-    });
-
-    return result;
-  }
-
   static toProductTransferDeleteAPIRequest(
     request: ProductTransferDeleteRequest,
   ): ProductTransferDeleteRequestDTO {

@@ -3,16 +3,19 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { toast } from 'sonner';
 import { CategoryProductGetResponse } from '../domain/entities/Category';
-import { createCategoryProductAsyncThunk } from './actions/createCategoryProductAsyncThunk';
-import { createProduct } from './actions/createProductAsyncThunk';
-import { deleteCategoryProductAsyncThunk } from './actions/deleteCategoryProductAsyncThunk';
-import { deleteProductAsyncThunk } from './actions/deleteProductAsyncThunk';
-import { deleteProductTransferAsyncThunk } from './actions/deleteProductTransferAsyncThunk';
-import { fetchCategoriesProduct } from './actions/fetchCategoriesProduct';
-import { getProductsAsyncThunk } from './actions/getProductsAsyncThunk';
-import { getProductTransactionAsyncThunk } from './actions/getProductTransactionAsyncThunk';
-import { updateCategoryProductAsyncThunk } from './actions/updateCategoryProductAsyncThunk';
-import { updateProductAsyncThunk } from './actions/updateProductAsyncThunk';
+import {
+  createCategoryProductAsyncThunk,
+  createProduct,
+  deleteCategoryProductAsyncThunk,
+  deleteProductAsyncThunk,
+  deleteProductTransferAsyncThunk,
+  fetchCategoriesProduct,
+  getProductsAsyncThunk,
+  getProductTransactionAsyncThunk,
+  updateCategoryProductAsyncThunk,
+  updateProductAsyncThunk,
+} from './actions';
+
 import { initialProductState } from './types';
 
 const productManagementSlice = createSlice({
@@ -21,6 +24,9 @@ const productManagementSlice = createSlice({
   reducers: {
     updateProductListItems: (state, action) => {
       state.products.items = action.payload;
+    },
+    setProductDetail: (state, action) => {
+      state.productDetail = action.payload;
     },
     setIsOpenDialogAddCategory: (state, action) => {
       state.isOpenDialogAddCategory = action.payload;
@@ -40,7 +46,6 @@ const productManagementSlice = createSlice({
     builder
       .addCase(fetchCategoriesProduct.pending, (state) => {
         state.categories.isLoading = true;
-        state.error = null;
       })
       .addCase(
         fetchCategoriesProduct.fulfilled,
@@ -56,9 +61,8 @@ const productManagementSlice = createSlice({
           };
         },
       )
-      .addCase(fetchCategoriesProduct.rejected, (state, action) => {
+      .addCase(fetchCategoriesProduct.rejected, (state) => {
         state.categories.isLoading = false;
-        state.error = action.error.message || 'Failed to fetch categories';
       });
 
     builder
@@ -72,11 +76,8 @@ const productManagementSlice = createSlice({
           description: 'Create product successfully!!',
         });
       })
-      .addCase(createProduct.rejected, (state, action) => {
+      .addCase(createProduct.rejected, (state) => {
         state.isCreatingProduct = false;
-        toast.error('Failed to create product', {
-          description: (state.error = action.error.message || 'Failed to create product'),
-        });
       });
 
     builder
@@ -89,64 +90,60 @@ const productManagementSlice = createSlice({
         state.products.total = action.payload.totalPage;
         state.products.page = action.payload.page;
       })
-      .addCase(getProductsAsyncThunk.rejected, (state, action) => {
+      .addCase(getProductsAsyncThunk.rejected, (state) => {
         state.products.isLoading = false;
-        state.error = action.error.message || 'Failed to get products';
       });
 
     builder
       .addCase(updateProductAsyncThunk.pending, (state) => {
         state.isUpdatingProduct = true;
       })
-      .addCase(updateProductAsyncThunk.fulfilled, (state, action) => {
+      .addCase(updateProductAsyncThunk.fulfilled, (state) => {
         state.isUpdatingProduct = false;
 
-        const updatedProduct = action.payload;
-        const index = state.products.items.findIndex((item) => item.id === updatedProduct.id);
+        // const updatedProduct = action.payload;
+        // const index = state.products.items.findIndex((item) => item.id === updatedProduct.id);
 
-        if (index !== -1) {
-          state.products.items[index] = updatedProduct;
-        }
+        // if (index !== -1) {
+        //   state.products.items[index] = updatedProduct;
+        // }
 
         toast.success('Success', {
           description: 'Update product successfully!!',
         });
       })
-      .addCase(updateProductAsyncThunk.rejected, (state, action) => {
+      .addCase(updateProductAsyncThunk.rejected, (state) => {
         state.isUpdatingProduct = false;
-        state.error = action.error.message || 'Failed to update product';
       });
 
     builder
       .addCase(deleteProductAsyncThunk.pending, (state) => {
         state.isDeletingProduct = true;
       })
-      .addCase(deleteProductAsyncThunk.fulfilled, (state, action) => {
+      .addCase(deleteProductAsyncThunk.fulfilled, (state) => {
         state.isDeletingProduct = false;
-        const deletedProductId = action.payload.id;
-        state.products.items = state.products.items.filter((item) => item.id !== deletedProductId);
+        // const deletedProductId = action.payload.id;
+        // state.products.items = state.products.items.filter((item) => item.id !== deletedProductId);
         toast.success('Success', {
           description: 'Delete product successfully!!',
         });
       })
-      .addCase(deleteProductAsyncThunk.rejected, (state, action) => {
+      .addCase(deleteProductAsyncThunk.rejected, (state) => {
         state.isDeletingProduct = false;
-        state.error = action.error.message || 'Failed to delete product';
       })
       .addCase(deleteProductTransferAsyncThunk.pending, (state) => {
         state.isDeletingProduct = true;
       })
-      .addCase(deleteProductTransferAsyncThunk.fulfilled, (state, action) => {
+      .addCase(deleteProductTransferAsyncThunk.fulfilled, (state) => {
         state.isDeletingProduct = false;
-        const deletedProductId = action.payload.id;
-        state.products.items = state.products.items.filter((item) => item.id !== deletedProductId);
+        // const deletedProductId = action.payload.id;
+        // state.products.items = state.products.items.filter((item) => item.id !== deletedProductId);
         toast.success('Success', {
           description: 'Delete product successfully!!',
         });
       })
-      .addCase(deleteProductTransferAsyncThunk.rejected, (state, action) => {
+      .addCase(deleteProductTransferAsyncThunk.rejected, (state) => {
         state.isDeletingProduct = false;
-        state.error = action.error.message || 'Failed to delete product';
       });
 
     builder.addCase(getProductTransactionAsyncThunk.pending, (state) => {
@@ -196,9 +193,8 @@ const productManagementSlice = createSlice({
       });
     });
 
-    builder.addCase(createCategoryProductAsyncThunk.rejected, (state, action) => {
+    builder.addCase(createCategoryProductAsyncThunk.rejected, (state) => {
       state.isCreatingProductCategory = false;
-      state.error = action.error.message || 'Failed to create category';
     });
 
     builder
@@ -217,9 +213,8 @@ const productManagementSlice = createSlice({
           description: 'Update category successfully!!',
         });
       })
-      .addCase(updateCategoryProductAsyncThunk.rejected, (state, action) => {
+      .addCase(updateCategoryProductAsyncThunk.rejected, (state) => {
         state.isUpdatingProductCategory = false;
-        state.error = action.error.message || 'Failed to update category';
       });
 
     builder
@@ -241,9 +236,8 @@ const productManagementSlice = createSlice({
           description: 'Delete category successfully!!',
         });
       })
-      .addCase(deleteCategoryProductAsyncThunk.rejected, (state, action) => {
+      .addCase(deleteCategoryProductAsyncThunk.rejected, (state) => {
         state.isDeletingProductCategory = false;
-        state.error = action.error.message || 'Failed to delete category';
       });
   },
 });
@@ -255,5 +249,6 @@ export const {
   setProductCategoryFormState,
   setProductCategoryToEdit,
   setProductIdToTransfer,
+  setProductDetail,
 } = productManagementSlice.actions;
 export default productManagementSlice.reducer;

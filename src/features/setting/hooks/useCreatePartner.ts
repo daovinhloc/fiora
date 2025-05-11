@@ -1,11 +1,11 @@
 'use client';
 
-import { uploadToFirebase } from '@/features/setting/module/landing/landing/firebaseUtils';
 import { partnerDIContainer } from '@/features/setting/module/partner/di/partnerDIContainer';
 import { TYPES } from '@/features/setting/module/partner/di/partnerDIContainer.type';
 import { Partner } from '@/features/setting/module/partner/domain/entities/Partner';
 import { ICreatePartnerUseCase } from '@/features/setting/module/partner/domain/usecases/CreatePartnerUsecase';
 import { IGetPartnerUseCase } from '@/features/setting/module/partner/domain/usecases/GetPartnerUsecase';
+import { setErrorsFromObject, uploadToFirebase } from '@/shared/lib';
 import { yupResolver } from '@hookform/resolvers/yup';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
@@ -52,25 +52,22 @@ export function useCreatePartner({ redirectPath }: Props) {
     TYPES.ICreatePartnerUseCase,
   );
 
-  const fetchPartners = useCallback(
-    async (userId: string) => {
-      try {
-        const response = await getPartnerUseCase.execute({ userId, page: 1, pageSize: 100 });
-        setPartners(response.filter((partner) => partner.parentId === null));
-      } catch (error: unknown) {
-        console.error('Error fetching partners:', error);
-      }
-    },
-    [getPartnerUseCase],
-  );
+  const fetchPartners = useCallback(async () => {
+    try {
+      const response = await getPartnerUseCase.execute({ page: 1, pageSize: 100 });
+      setPartners(response.filter((partner) => partner.parentId === null));
+    } catch (error: unknown) {
+      console.error('Error fetching partners:', error);
+    }
+  }, [getPartnerUseCase]);
 
   useEffect(() => {
     if (status === 'authenticated' && session?.user?.id) {
-      fetchPartners(session.user.id);
+      fetchPartners();
     }
   }, [status, session, fetchPartners]);
 
-  async function onSubmit(values: PartnerFormValues) {
+  async function onSubmit(values: PartnerFormValues, setError: any) {
     if (status !== 'authenticated' || !session?.user?.id) {
       toast.error('User not authenticated. Please log in.');
       return;
@@ -80,7 +77,6 @@ export function useCreatePartner({ redirectPath }: Props) {
       const submissionData = { ...values };
       let logoUrl: string | undefined;
 
-      // Xử lý logo đơn giản hơn
       if (values.logo instanceof File) {
         logoUrl = await uploadToFirebase({
           file: values.logo,
@@ -101,29 +97,17 @@ export function useCreatePartner({ redirectPath }: Props) {
 
       await createPartnerUseCase.execute(formattedPartnerData as CreatePartnerAPIRequestDTO);
 
-      toast.success('Partner added successfully!');
-      form.reset();
-      await fetchPartners(session.user.id);
+      // form.reset();
+      await fetchPartners();
       router.push(redirectPath);
     } catch (error: any) {
-      // Improved error handling
-      let errorMessage = 'Failed to create partner';
+      const errorMessage = 'Failed to create partner';
 
       if (error.message) {
-        try {
-          // Try to parse the error message if it's a JSON string
-          const parsedError = JSON.parse(error.message);
-          if (parsedError.message) {
-            errorMessage = parsedError.message;
-          }
-        } catch {
-          // If parsing fails, use the error message directly
-          errorMessage = error.message;
-        }
+        setErrorsFromObject(error.message, setError);
       }
 
       toast.error(errorMessage);
-      console.error('Create partner error:', error);
     }
   }
 

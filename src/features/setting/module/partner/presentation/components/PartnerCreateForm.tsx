@@ -1,20 +1,22 @@
 'use client';
 
+import { FormConfig } from '@/components/common/forms';
 import CustomDateTimePicker from '@/components/common/forms/date-time-picker/CustomDateTimePicker';
 import InputField from '@/components/common/forms/input/InputField';
 import SelectField from '@/components/common/forms/select/SelectField';
 import TextareaField from '@/components/common/forms/text-area/TextareaField';
 import UploadField from '@/components/common/forms/upload/UploadField';
-import GlobalForm from '@/components/common/forms/GlobalForm';
 import { useCreatePartner } from '@/features/setting/hooks/useCreatePartner';
-import { fetchPartners } from '@/features/setting/module/partner/slices/actions/fetchPartnersAsyncThunk';
 import {
   PartnerFormValues,
   partnerSchema,
 } from '@/features/setting/module/partner/presentation/schema/addPartner.schema';
+import { fetchPartners } from '@/features/setting/module/partner/slices/actions/fetchPartnersAsyncThunk';
 import { useAppDispatch, useAppSelector } from '@/store';
+import { yupResolver } from '@hookform/resolvers/yup';
 import { useSession } from 'next-auth/react';
 import { useEffect, useState } from 'react';
+import { FormProvider, useForm } from 'react-hook-form';
 import { toast } from 'sonner';
 
 export default function PartnerCreateForm() {
@@ -27,14 +29,19 @@ export default function PartnerCreateForm() {
   const { data: session, status } = useSession();
   const [isDataFetched, setIsDataFetched] = useState(false);
 
-  // Improved check for partners data on page load/refresh
+  const methods = useForm<PartnerFormValues>({
+    resolver: yupResolver(partnerSchema),
+    defaultValues: {
+      parentId: 'none',
+    },
+    mode: 'onChange',
+  });
+
   useEffect(() => {
     const fetchPartnersData = async () => {
       if (status === 'authenticated' && session?.user?.id && !isDataFetched) {
         try {
-          await dispatch(
-            fetchPartners({ userId: session.user.id, page: 1, pageSize: 100 }),
-          ).unwrap();
+          await dispatch(fetchPartners({ page: 1, pageSize: 100 })).unwrap();
           setIsDataFetched(true);
         } catch (error) {
           console.error('Error fetching partners:', error);
@@ -57,63 +64,59 @@ export default function PartnerCreateForm() {
   ];
 
   const fields = [
+    <UploadField key="logo" label="Logo" name="logo" previewShape="circle" />,
+    <InputField key="name" name="name" label="Name" placeholder="Nguyen Van A" required />,
     <SelectField
       key="parentId"
       name="parentId"
       label="Parent"
       options={parentOptions}
-      placeholder="Select a parent partner"
+      placeholder="FIORA"
       defaultValue="none"
     />,
-    <InputField key="name" name="name" label="Name" placeholder="Name" required />,
-    <UploadField key="logo" label="Logo" name="logo" previewShape="circle" />,
     <TextareaField
       key="description"
       name="description"
       label="Description"
-      placeholder="Enter description"
+      placeholder="E.g., Leading provider of technology solutions"
     />,
     <CustomDateTimePicker
       key="dob"
       name="dob"
       label="Date of Birth"
-      placeholder="Select date of birth"
+      placeholder="15/05/1990"
       showYearDropdown
       showMonthDropdown
       dropdownMode="select"
       dateFormat="dd/MM/yyyy"
     />,
+    <InputField key="identify" name="identify" label="Identification" placeholder="123456789012" />,
+    <InputField key="taxNo" name="taxNo" label="Tax Number" placeholder="0101234567" />,
+    <InputField key="phone" name="phone" label="Phone" placeholder="0123456789" />,
     <InputField
-      key="identify"
-      name="identify"
-      label="Identification"
-      placeholder="Identification Number"
+      key="address"
+      name="address"
+      label="Address"
+      placeholder="123 Le Loi Street, District 1, Ho Chi Minh City"
     />,
-    <InputField key="taxNo" name="taxNo" label="Tax Number" placeholder="Tax Number" />,
-    <InputField key="phone" name="phone" label="Phone" placeholder="Phone Number" />,
-    <InputField key="address" name="address" label="Address" placeholder="Address" />,
-    <InputField key="email" name="email" label="Email" placeholder="Email" type="email" />,
+    <InputField
+      key="email"
+      name="email"
+      label="Email"
+      placeholder="contact@fiora.com"
+      type="email"
+    />,
   ];
 
   const handleSubmit = async (data: PartnerFormValues) => {
-    try {
-      // Simply pass the data to the submitPartner function
-      // The logo upload will be handled in useCreatePartner
-      await submitPartner(data);
-    } catch (error) {
-      toast.error('Failed to create partner');
-      console.error('Create partner error:', error);
-    }
+    await submitPartner(data, methods.setError);
   };
 
   return (
-    <GlobalForm
-      fields={fields}
-      schema={partnerSchema}
-      defaultValues={{
-        parentId: 'none',
-      }}
-      onSubmit={handleSubmit}
-    />
+    <FormProvider {...methods}>
+      <form onSubmit={methods.handleSubmit(handleSubmit)} className="space-y-4">
+        <FormConfig methods={methods} fields={fields} onBack={() => window.history.back()} />
+      </form>
+    </FormProvider>
   );
 }

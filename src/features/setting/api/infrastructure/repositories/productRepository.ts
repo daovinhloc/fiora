@@ -1,21 +1,17 @@
 import { prisma } from '@/config';
 import { Prisma, Product } from '@prisma/client';
-import { IProductRepository } from '../../application/repositories/productRepository.interface';
+import { IProductRepository } from '../../repositories/productRepository.interface';
 
 class ProductRepository implements IProductRepository {
   async createProduct(data: Prisma.ProductUncheckedCreateInput): Promise<Product> {
     return prisma.product.create({ data });
   }
 
-  async findUniqueProduct(
-    where: Prisma.ProductWhereUniqueInput,
-  ): Promise<Prisma.ProductGetPayload<{ include: { transactions: true } }> | null> {
-    return prisma.product.findUnique({
-      where,
-      include: {
-        transactions: true,
-      },
-    });
+  async findProductById(
+    where: Prisma.ProductWhereInput,
+    options?: Prisma.ProductFindFirstArgs,
+  ): Promise<Product | null> {
+    return prisma.product.findFirst({ where, ...options });
   }
 
   async findManyProducts(

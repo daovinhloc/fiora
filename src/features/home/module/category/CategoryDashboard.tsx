@@ -1,7 +1,7 @@
 'use client';
-import NestedBarChart, { type BarItem } from '@/components/common/nested-bar-chart';
+import NestedBarChart from '@/components/common/nested-bar-chart';
 import { Icons } from '@/components/Icon';
-import { formatCurrency } from '@/shared/lib/formatCurrency';
+import { formatCurrency, convertVNDToUSD } from '@/shared/utils';
 import DeleteDialog from '@/features/home/module/category/components/DeleteDialog';
 import { fetchCategories } from '@/features/home/module/category/slices/actions';
 import { Category } from '@/features/home/module/category/slices/types';
@@ -12,45 +12,62 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo } from 'react';
 import ChartSkeleton from '@/components/common/organisms/ChartSkeleton';
+import { BarItem } from '@/components/common/nested-bar-chart/type';
 
 const CategoryDashboard = () => {
   const dispatch = useAppDispatch();
   const router = useRouter();
   const { categories } = useAppSelector((state) => state.category);
+  const { currency } = useAppSelector((state) => state.settings);
 
   // * INITIALIZATION CHART DATA ZONE
   const chartData: BarItem[] = useMemo(() => {
     if (!categories.data) return [];
-    return categories.data.map((category: Category) => ({
-      id: category.id,
-      name: category.name,
-      value: category.balance || 0,
-      icon: category.icon,
-      color:
-        category.type === CategoryType.Expense
-          ? COLORS.DEPS_DANGER.LEVEL_1
-          : COLORS.DEPS_SUCCESS.LEVEL_1,
-      type: category.type === CategoryType.Expense ? CategoryType.Expense : CategoryType.Income,
-      children: category.subCategories?.map((subCategory) => ({
-        id: subCategory.id,
-        name: subCategory.name,
-        value: subCategory.balance || 0,
-        icon: subCategory.icon,
+    return categories.data.map((category: Category) => {
+      const balance = category.balance || 0;
+      const convertedBalance = currency === 'USD' ? convertVNDToUSD(balance) : balance;
+
+      return {
+        id: category.id,
+        name: category.name,
+        value: convertedBalance,
+        icon: category.icon,
         color:
           category.type === CategoryType.Expense
             ? COLORS.DEPS_DANGER.LEVEL_1
             : COLORS.DEPS_SUCCESS.LEVEL_1,
         type: category.type === CategoryType.Expense ? CategoryType.Expense : CategoryType.Income,
-      })),
-    }));
-  }, [categories]);
+        children: category.subCategories?.map((subCategory) => {
+          const subBalance = subCategory.balance || 0;
+          const convertedSubBalance = currency === 'USD' ? convertVNDToUSD(subBalance) : subBalance;
 
+          return {
+            id: subCategory.id,
+            name: subCategory.name,
+            value: convertedSubBalance,
+            icon: subCategory.icon,
+            color:
+              category.type === CategoryType.Expense
+                ? COLORS.DEPS_DANGER.LEVEL_1
+                : COLORS.DEPS_SUCCESS.LEVEL_1,
+            type:
+              category.type === CategoryType.Expense ? CategoryType.Expense : CategoryType.Income,
+          };
+        }),
+      };
+    });
+  }, [categories.data, currency]);
+
+  // Sort and filter expense data
   const expenseData = useMemo(() => {
-    return chartData.filter((item) => item.type === CategoryType.Expense);
+    const expenses = chartData.filter((item) => item.type === CategoryType.Expense);
+    return [...expenses].sort((a, b) => b.value - a.value);
   }, [chartData]);
 
+  // Sort and filter income data
   const incomeData = useMemo(() => {
-    return chartData.filter((item) => item.type === CategoryType.Income);
+    const incomes = chartData.filter((item) => item.type === CategoryType.Income);
+    return [...incomes].sort((a, b) => b.value - a.value);
   }, [chartData]);
 
   // * HANDLERS FUNCTIONS ZONE
@@ -88,7 +105,8 @@ const CategoryDashboard = () => {
             <NestedBarChart
               title="Expense"
               data={expenseData}
-              xAxisFormatter={(value) => formatCurrency(value)}
+              xAxisFormatter={(value) => formatCurrency(value, currency)}
+              currency={currency}
               callback={handleDisplayDetail}
               levelConfig={{
                 totalName: 'Total Spent',
@@ -102,7 +120,8 @@ const CategoryDashboard = () => {
             <NestedBarChart
               title="Income"
               data={incomeData}
-              xAxisFormatter={(value) => formatCurrency(value)}
+              xAxisFormatter={(value) => formatCurrency(value, currency)}
+              currency={currency}
               callback={handleDisplayDetail}
               levelConfig={{
                 totalName: 'Total Income',

@@ -22,39 +22,61 @@ export const useGetIconLabel = (icon: string): string => {
 };
 
 export const formatCurrency = (value: number, currency: string = 'VND') => {
-  if (currency === 'USD') {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-    }).format(value);
+  // Handle compact notation for large numbers
+  let formattedValue = value;
+  let suffix = '';
+
+  if (Math.abs(value) >= 1_000_000) {
+    // Convert to millions (M)
+    formattedValue = value / 1_000_000;
+    suffix = 'M';
+  } else if (Math.abs(value) >= 1_000) {
+    // Convert to thousands (K)
+    formattedValue = value / 1_000;
+    suffix = 'K';
   }
 
-  return new Intl.NumberFormat('vi-VN', {
-    style: 'currency',
-    currency: 'VND',
-  }).format(value);
+  // Determine the locale and currency format
+  const formatter =
+    currency === 'USD'
+      ? new Intl.NumberFormat('en-US', {
+          style: 'currency',
+          currency: 'USD',
+          minimumFractionDigits: suffix ? 2 : 0, // Use 2 decimals for compact notation
+          maximumFractionDigits: suffix ? 2 : 0, // Limit decimals for compact notation
+        })
+      : new Intl.NumberFormat('vi-VN', {
+          style: 'currency',
+          currency: 'VND',
+          minimumFractionDigits: suffix ? 2 : 0, // Use 2 decimals for compact notation
+          maximumFractionDigits: suffix ? 2 : 0, // Limit decimals for compact notation
+        });
+
+  // Format the number and insert suffix before the currency symbol
+  const formatted = formatter.format(formattedValue);
+  if (suffix) {
+    if (currency === 'USD') {
+      // For USD, move the suffix after the number but keep $ at the start
+      const numericPart = formatted.replace('$', '').trim();
+      return `$${numericPart}${suffix}`;
+    } else {
+      // For VND, split at ₫ and place suffix before the currency symbol
+      const parts = formatted.split('₫').map((part) => part.trim());
+      return `${parts[0]}${suffix} ₫${parts[1] || ''}`;
+    }
+  }
+
+  return formatted;
 };
 
-export const convertUSDToVND = (amountUSD: number) => {
-  const exchangeRate = 24800; // Fixed exchange rate
-  const amountVND = amountUSD * exchangeRate;
-
-  // Format the output with Vietnamese number formatting
-  return amountVND.toLocaleString('vi-VN', {
-    style: 'currency',
-    currency: 'VND',
-  });
+export const convertVNDToUSD = (amountVND: number): number => {
+  const exchangeRate = 25000; // 1 USD = 25000 VND
+  return amountVND / exchangeRate;
 };
 
-export const convertVNDToUSD = (amountVND: number) => {
-  const exchangeRate = 24800; // Fixed exchange rate
-  const amountUSD = amountVND / exchangeRate;
-
-  // Format the output with USD number formatting
-  return amountUSD.toLocaleString('en-US', {
-    style: 'currency',
-    currency: 'USD',
-  });
+export const convertUSDToVND = (amountUSD: number): number => {
+  const exchangeRate = 25000; // 1 USD = 25000 VND
+  return amountUSD * exchangeRate;
 };
 
 export const calculateAvailableLimit = (limit: string, balance: string): string => {
